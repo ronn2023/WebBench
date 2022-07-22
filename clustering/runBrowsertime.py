@@ -30,25 +30,29 @@ def loadJSON(url):
 def runBrowsertime(df):
     x = {}
 
+    os.system("cd /Users/ronnatarajan/Desktop/WebBench")
     for site in df:
 
-        resfile = site.replace("/","_").replace(".","__") + ".json"
-        os.system("docker run --shm-size=1gb -v /Users/ronnatarajan/Documents/WebBench-Practice/docker/data lighthouse-test lighthouse --output json --port=9222 --preset=desktop " + "https://"+site + ">" + resfile)
+        resfile = "../data/" + site.replace("/","_").replace(".","__") + ".json"
+        os.system("docker run --shm-size=1gb -v /Users/ronnatarajan/Desktop/WebBench/data:/data lighthouse-test lighthouse --output json  --port=9222 --preset=desktop http://" +site + " > " + resfile)
+
     # docker run -v /Users/ronnatarajan/Desktop/WebBench-Practice/docker/data:/data lighthouse-test browsertime --pageLoadStrategy normal --resultDir browsertime_results --output testing.json https://www.google.com
+
+
 
     #os.system('docker run --shm-size=1gb -v /Users/ronnatarajan/Documents/WebBench-Practice/docker/data lighthouse-test lighthouse --output json --port=9222 --preset=desktop ' + site +  " > " + resfile)
     #os.system(docker run --shm-size=1gb -v /Users/ronnatarajan/Documents/WebBench-Practice/docker/data lighthouse-test lighthouse --output json --port=9222 --preset=desktop https://www.google.com  > google_testing.json)
 
 # ** working lighthouse statement
 # ** docker run --shm-size=1gb -v /Users/ronnatarajan/Documents/WebBench-Practice/docker/data lighthouse-test lighthouse
-# ** --output=json --output-path=results.json --port=9222 --preset=desktop https://www.google.com 
+# ** --output=json --output-path=results.json --port=9222 --preset=desktop https://www.google.com
 
 # docker run -v /Users/ronnatarajan/Desktop/webmedic-dev/src/amp_analysis/src/docker/data:/data lighthouse-test browsertime --pageLoadStrategy normal --resultDir data --output testing.json https://www.google.com
 
 
 def main():
 
-    df = loadJSON("/Users/ronnatarajan/Desktop/WebBench-Practice/testing/web_bench_stats_random_100.json")
+    df = loadJSON("/Users/ronnatarajan/Desktop/WebBench/testing/smaller_webList/web_list.json")
     runBrowsertime(df)
 
 main()
