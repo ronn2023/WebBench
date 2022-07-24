@@ -28,28 +28,56 @@ from matplotlib import pyplot as plt
 
 WEBSITE_NAMES = []
 
-# "/Users/ronnatarajan/Desktop/WebBench-Practice/testing/web_bench_stats_random_100.json"
-# **** name of true testing file ***** #
-# web_bench_stats_random_100.json
+
 def loadJSON(url):
+    '''
+            DESCIPRTION
+            loads json with website info
+            :param:<url, String>: path of json file
+            :return: JSON variable
+            :rtype: JSON
+    '''
+
     df = open(url, "r")
 
     #JSON file loaded into manipulatable variable
     df = json.loads(df.read())
     return df
+
+
 def epsilon(features):
+    '''
+            DESCIPRTION
+            Used to find optimal epsilon value for DBSCAN
+            :param:<features, 2D list>: feature list
+            :return: none
+            :rtype: none
+    '''
+    #kdistance graph
     neighbors = NearestNeighbors(n_neighbors=20)
     neighbors_fit = neighbors.fit(features)
     distances, indices = neighbors_fit.kneighbors(features)
 
+
     distances = np.sort(distances, axis=0)
     distances = distances[:,1]
+
+    #restrict x and y axes and plot
     plt.plot(distances)
     plt.xlim([40,50])
     plt.ylim([0.3,0.8])
     plt.savefig("../clustering/epsilon.png")
 
 def gatherUsedAPIs(df):
+    '''
+            DESCIPRTION
+            Build List of API's in JSON
+            :param:<df, JSON>: feature list
+            :return: apis, browser_events --
+            :rtype: touple of lists
+    '''
+
+
     #list of used APIs within web_bench_stats_random_100 JSON file
     apis = []
     browser_events = []
@@ -69,25 +97,32 @@ def gatherUsedAPIs(df):
     return apis, browser_events
 
 def buildFeatureSet(df, apis, browser_events):
-    skipped = 0
-    total = 0
+    '''
+            DESCIPRTION
+            Build Feature list
+            :param:<df, apis, browser_events; JSON, list, list>: website data JSON, list of known API's and browser events
+            :return: 2D feature list
+            :rtype: 2D list
+    '''
 
 
+    #commented code below can be used to create a CSV to visualize the featurelist
 
-    with open('../clustering/websites.csv', 'w') as f:
+    # with open('../clustering/websites.csv', 'w') as f:
+    #
+    #
+    #     # create the csv writer
+    #     writer = csv.writer(f)
+    #     header = ['Webname', 'Apis', 'RAM-Metric', 'Browser Events', 'Browser Events','Browser Events','Browser Events','CPU' ]
+    #     writer.writerow(header)
 
-
-        # create the csv writer
-        writer = csv.writer(f)
-        header = ['Webname', 'Apis', 'RAM-Metric', 'Browser Events', 'Browser Events','Browser Events','Browser Events','CPU' ]
-        writer.writerow(header)
 
     # 2d array to track the feature list ( JS API calls) of each website
     features = []
     #loop through JSON file again and build 2D Feature List
     for site_name in df:
-        total += 1
 
+        #log the website names
         WEBSITE_NAMES.append(site_name)
 
         #array to save each website's features
@@ -119,6 +154,8 @@ def buildFeatureSet(df, apis, browser_events):
         # ----------------------------------------------------------- #
         # ***                    get api calls                    *** #
         # ----------------------------------------------------------- #
+
+        #count number of total events
         num_apis = 0
         for key in apis:
             if key in df[site_name]['apis']:
@@ -127,13 +164,15 @@ def buildFeatureSet(df, apis, browser_events):
         # ----------------------------------------------------------- #
         # ***                     Memory                          *** #
         # ----------------------------------------------------------- #
-        #get memory usage for JS
+        #get memory usage for JS and NON js
         arr.append(df[site_name]['mem_js'])
         arr.append(df[site_name]['mem'] - df[site_name]['mem_js'])
 
         # ----------------------------------------------------------- #
         # ***               Number of Browser Events              *** #
         # ----------------------------------------------------------- #
+
+        #count number of total browser events
         num_browser=0
         for val in browser_events:
             if val in df[site_name]['event_class_stats_summary']:
@@ -145,15 +184,15 @@ def buildFeatureSet(df, apis, browser_events):
         #Get timing for CPU usage analysis
         num = []
         val = df[site_name]['phase_timings']
-        # invalid = False
 
         for key in val:
             num.append(val[key][0])
             arr.append(df[site_name]['phase_timings'][key][0])
+
+        #ensure that CPU usage analysis data exists
         if len(num) == 0 or not len(num) == 4:
             continue
-        # if invalid:
-        #     continue
+
 
 
 
@@ -163,7 +202,7 @@ def buildFeatureSet(df, apis, browser_events):
     print(len(features))
     print(len(features[0]))
 
-
+    #normalize data: MAX NORMALIZATION
     for col in range(len(features[0])):
         arr = []
         for row in range(len(features)):
@@ -171,18 +210,30 @@ def buildFeatureSet(df, apis, browser_events):
         for row in range(len(features)):
             features[row][col] = features[row][col] / max(arr)
 
-    with open('../clustering/websites.csv', 'a') as f:
+    # commented code to add to visualization file
 
-
-        # create the csv writer
-        writer = csv.writer(f)
-
-        str_line = [site_name]
-        string = site_name
-        for i in features:
-            writer.writerow(i)
+    # with open('../clustering/websites.csv', 'a') as f:
+    #
+    #
+    #     # create the csv writer
+    #     writer = csv.writer(f)
+    #
+    #     str_line = [site_name]
+    #     string = site_name
+    #     for i in features:
+    #         writer.writerow(i)
     return features
 def trainGaussian(features, kstart, kend, kstep):
+    '''
+            DESCIPRTION
+            Train gaussian model (Get info on error with different parameter values)
+            :param:<features, kstart, kend, kstep; 2D list, int, int, int>: featurelist, starting model value for n_components,
+                                                                            end value for n_componenets, step val
+            :return: error_list, k_list
+            :rtype: list, list
+    '''
+
+
     #list used to interpret ideal number of clusters
     error_list = []
 
@@ -192,14 +243,23 @@ def trainGaussian(features, kstart, kend, kstep):
     for k in k_list:
         cluster = GaussianMixture(n_components=k, random_state=0).fit(features)
         pred = cluster.predict(features)
+        #ensure that num labels isn't one
         if len(pred) <=1:
             del k_list[k]
             continue
+        #use silhouette_avg to analyze clustering
         error_list.append(metrics.silhouette_score(features, pred))
 
     return error_list, k_list
 
 def plotGaussian(error_list, k_list):
+    '''
+            DESCIPRTION
+            Plot gausian values with their corresponding error
+            :param:<error_list, k_list; list, list>: values with gaussian model error and model arguments
+            :return: none
+            :rtype: none
+    '''
     plt.plot(k_list, error_list)
     plt.title('The Elbow Method Graph')
     plt.xlabel('Number of clusters')
@@ -209,6 +269,14 @@ def plotGaussian(error_list, k_list):
     plt.savefig("../GaussianTraining/clusters_analysis.png")
 
 def trainKMeans(features, kstart, kend, kstep):
+    '''
+            DESCIPRTION
+            Test different KMEANs parameters
+            :param:<features, kstart, kend, kstep; JSON, list, list>: featurelist / end, start, and step vals for model training
+            :return: error_list, k_list
+            :rtype: list, list
+    '''
+
     #list used to interpret ideal number of clusters
     error_list = []
     copy_list = []
@@ -227,85 +295,124 @@ def trainKMeans(features, kstart, kend, kstep):
 
     return error_list, copy_list
 
-def sampling(budget, features, selector):#budget, selector, clusters, features):
-    cluster = DBSCAN(eps =1.2, min_samples = 2).fit(features)
+def sampling(budget, features, selector):
+    '''
+            DESCIPRTION
+            Sampling method
+            :param:<budget, features, selector; int, 2D list, string>: desired num websites, 2D list of features, selector for sampling techniques
+            :return: smaller_web
+            :rtype: list
+    '''
 
-
+    # clustering object
+    # cluster = DBSCAN(eps =1.2, min_samples = 2).fit(features)
+    cluster = KMeans(n_clusters=10, random_state=0).fit(features)
     labels = cluster.labels_
 
     unique_clusters = set(labels)
     #find percent each cluster makes up of the overal number of websites and apply that percent to the budget
     num_web = {}
 
-
-    try:
-        arr = [1,2,3,4]
-        d = np.array(arr)
-        print(arr[np.where(d < 4)])
-    except:
-        print("bruh whyyyyyyyyyyyyyyyy")
-
+    #copy featurelist into np array and bui;d this into a list of points from the clustering
     npfeatures = np.array(features)
     points = {i: npfeatures[np.where(cluster.labels_ == i)] for i in unique_clusters}
-    # print(points[0].tolist())
+    #build 2D lists that track points of each cluster and centroids of each cluster
+    #build map that tracks the weightage of each cluster and the number of points in that cluster
     points_of_cluster = []
-    centroid_of_cluster = []
+    centroid_of_cluster = cluster.cluster_centers_
+
+    cpy = []
     for row in points:
         points_of_cluster.append(points[row])
-        centroid_of_cluster.append(np.mean(points[row], axis=0))
+        cpy.append(np.mean(points[row], axis=0))
     for c in unique_clusters:
         num_web[c] = [(float(len(points_of_cluster[c])) / float(len(labels))), labels.tolist().count(c)]
-    smaller_web = []
 
+
+    smaller_web = []
     total = len(unique_clusters)
-    curr = 0
-    print("total: " + str(total))
-    j = 0
+
+    #build smaller list using the closest websites to the centroids
     if selector == 'closest to cluster':
         for c in unique_clusters:
             num = num_web[c][0] * budget
-
-            for i in range(round(num)):
+            if int(math.ceil(num)) == 0:
+                print("incorrect budget, suggested num websites is: " + str(round(num)))
+                exit(1)
+            #keep selecting websites num times
+            for i in range(int(math.ceil(num))):
                 closest, _ = pairwise_distances_argmin_min(centroid_of_cluster, features)
                 smaller_web.append(WEBSITE_NAMES[closest[c]])
                 del features[closest[c].item()]
-            j += 1
         return smaller_web
+    #build smaller list using random websites from each cluster
     elif selector == 'random':
         for c in unique_clusters:
             num = num_web[c][0] * budget
-            for i in range(round(num)):
-                random_point = random.choice(points_of_cluster[c])
+            if int(math.ceil(num)) == 0:
+                print("cannot produce specified number of clusters")
+                exit(1)
+            #keep selecting websites num times
+            copy = points_of_cluster[c]
+            print("aajsdjklhaskjhfjkasdjfaklsdfasd")
+            print(type(points_of_cluster[c][0]))
+            found = []
+            for i in range(int(math.ceil(num))):
+
+                #random point
+                random_point = random.choices(copy)[0]
+                while random_point.tolist() in found:
+                    random_point = random.choices(copy)[0]
+
+
                 index = features.index(random_point.tolist())
                 smaller_web.append(WEBSITE_NAMES[index])
-                del features[index]
+                found.append(random_point.tolist())
+        #
+
         return smaller_web
     elif selector == 'smallest avg distance':
 
 
         for c in unique_clusters:
+            #distances map
             distances = {}
+            #var to track sum of each cluster
             sum = 0
+            #num websites to select from cluster
             num = num_web[c][0] * budget
-            for i in range(round(num)):
-                for p in points_of_cluster[c]:
-                    for cp in points_of_cluster[c]:
-                        if cp.tolist() == p.tolist():
-                            continue
-                        list = points_of_cluster[c].tolist()
-                        pointone = {list.index(p.tolist()) : p}
-                        pointTwo = {list.index(cp.tolist()) : cp}
-                        sum += math.dist(p.tolist(), cp.tolist())
 
-                        feature_index_P= features.index(p.tolist())
-                    distances[feature_index_P] = float(sum) / float((len(points_of_cluster[c])))
+            if int(math.ceil(num)) == 0:
+                print("incorrect budget")
+                exit(1)
+            #keep selecting websites num times
+            copy = points_of_cluster[c]
+
+            for p in points_of_cluster[c]:
+                for cp in points_of_cluster[c]:
+                    if cp.tolist() == p.tolist():
+                        continue
+                    list = points_of_cluster[c].tolist()
+
+                    sum += math.dist(p.tolist(), cp.tolist())
+
+                    feature_index_P= features.index(p.tolist())
+                distances[feature_index_P] = float(sum) / float((len(points_of_cluster[c])))
+            for i in range(int(math.ceil(num))):
                 best_web= min(distances)
                 smaller_web.append(WEBSITE_NAMES[best_web])
+                del distances[best_web]
         return smaller_web
 
 #BEST VALUE FOR NUMCLUSTERS WAS CALCULATED TO BE  **** 4 ***
-def final_plot_Kmeans(num_clusters,k, a, features):
-
+def final_plots(num_clusters,k, a, features):
+    '''
+            DESCIPRTION
+            Plot everything
+            :param:<num_clusters, k, a , features; int, int, int, int>: parameter vals
+            :return: none
+            :rtype: none
+    '''
 
     with open('../KMEANS_CLUSTER_CSV/clusters.csv', 'w') as f:
         clusters = KMeans(n_clusters= num_clusters, random_state=0).fit(features)
@@ -351,104 +458,14 @@ def final_plot_Kmeans(num_clusters,k, a, features):
 
 
 
-
-# def sample_KMEANS(clusters):
-
-
-def trainDBSCAN(features):
-    epsilon = [x/10 for x in range(1,10000,1)]
-    min_samples = [y for y in range(2,100, 1)]
-
-    print("Feature Length -------> " + str(len(features)))
-    print("Feature Width -------> " + str(len(features[0])))
-
-
-
-    sil_avg = {}
-    db = DBSCAN(eps=1.2, min_samples = 2).fit(features)
-    labels = db.labels_
-
-
-    sp = DBSCAN(eps=1.2, min_samples = 3).fit(features)
-    splabels = sp.labels_
-    print( "Num clusters: " + str(len(set(labels.tolist()))))
-    print( "Num clusters: " + str(len(set(splabels.tolist()))))
-
-    # with open('../DBSCAN-testing/numclusters.csv', 'w') as f:
-    #
-    #     # create the csv writer
-    #     writer = csv.writer(f)
-    #     header = ['Epsilon', 'Minsamples', "Clusters"]
-    #     writer.writerow(header)
-#     for i in range(len(epsilon)):
-#         for j in range(len(min_samples)):
-#
-#             db = DBSCAN(eps =epsilon[i], min_samples = min_samples[j]).fit(features)
-#
-#             # core_samples_mask = np.zeros_like(db.labels_, dtype=bool)
-#             # core_samples_mask[db.core_sample_indices_] = True
-#
-#             labels = db.labels_
-#
-#             # with open('../DBSCAN-testing/numclusters.csv', 'a') as f:
-#             #     # create the csv writer
-#             #     writer = csv.writer(f)
-#             #
-#             #     temp = ""
-#             #     str_line = [str(epsilon[i]), str(min_samples[j])]
-#             #     for label in labels:
-#             #         index = [x[0] for x, value in np.ndenumerate(labels) if value== label]
-#             #         str_line.append(str(len(index)))
-#             #
-#             #
-#             #     # write a row to the csv file
-#             #     writer.writerow(str_line)
-#
-#             # if
-#
-#
-#             # if np.unique(labels) <= 1:
-#             if len(set(labels.tolist())) <= 1 or len(set(labels.tolist())) == len(features):
-#                 continue
-#
-#             silhouette_avg = metrics.silhouette_score(features, labels)
-#
-# # silhouette_avg > 0.4 and len(set(labels.tolist())) > 2 and
-#             # if not len(set(labels.tolist())) == 50 and not len(set(labels.tolist())) == 1:
-#             #     print("epsilon: " + str(epsilon[i]) + "---------- minsamples : " + str(min_samples[j]) + "------ clusters: " + str(len(set(labels.tolist()))) + " ------error: " + str(silhouette_avg))
-#             sil_avg[repr([epsilon[i],min_samples[j]])] = silhouette_avg
-
-    # print(len(sil_avg))
-    return sil_avg, epsilon, min_samples #Epsilon: 1.2, min_samples: 3    (Seems like 2 clusters are best : 0.73 error val)
-
-
-
-def plotDBSCAN(error_list, k_list, m_list):
-
-#    plt.plot(k_list, error_list, label="m")
-    for val in m_list:
-        error_listM = []
-        x_list = []
-        numclusters = 0
-        for row in error_list:
-            list_row = eval(row)
-            if list_row[1] == val:
-                error_listM.append(error_list[row])
-                x_list.append(list_row[0])
-
-
-        # print("Epsilon len: " + str(len(x_list)))
-        # print("Error len: " + str(len(error_listM)))
-
-        fig1, ax1 = plt.subplots()
-        ax1.plot(x_list, error_listM, label="m = {m_val}".format(m_val = val))
-        ax1.set_title('The Elbow Method Graph')
-        ax1.set_xlabel('EPS and min_samples')
-        ax1.set_ylabel('Error')
-        fig1.savefig("../DBSCAN-testing/clusters_analysis" + str(val)+".png")
-
-
 def agglo(features, kstart, kend, kstep):
+    '''
+            DESCIPRTION
+            Test different AgglomerativeClustering parameters
+            :param:<features, kstart, kend, kstep; JSON, list, list>: featurelist / end, start, and step vals for model training
+            :return: error_list, k_list
+            :rtype: list, list
+    '''
     #list used to interpret ideal number of clusters
     error_list = []
 
@@ -467,6 +484,13 @@ def agglo(features, kstart, kend, kstep):
     return error_list, copy_list
 
 def plotAgglo(error_list, k_list):
+    '''
+        DESCIPRTION
+        Plot AgglomerativeClustering values with their corresponding error
+        :param:<error_list, k_list; list, list>: values with gaussian model error and model arguments
+        :return: none
+        :rtype: none
+    '''
     #plot the error levels found in the different tests to be later analyzed
 
 
@@ -480,6 +504,13 @@ def plotAgglo(error_list, k_list):
     plt.savefig("../agglo-testing/agglo_analysis.png")
 
 def k_means_plot(error_list, k_list):
+    '''
+        DESCIPRTION
+        Plot k means values with their corresponding error
+        :param:<error_list, k_list; list, list>: values with gaussian model error and model arguments
+        :return: none
+        :rtype: none
+    '''
     #plot the error levels found in the different tests to be later analyzed
 
     plt.plot(k_list, error_list)
@@ -491,6 +522,14 @@ def k_means_plot(error_list, k_list):
     plt.savefig("../k-means-testing/clusters_analysis.png")
 
 def comp(features, kstart, kend, kstep):
+    '''
+            DESCIPRTION
+            Plot gausian values with their corresponding error
+            :param:<features, kstart, kend, kstep; JSON, list, list>: featurelist / end, start, and step vals for model training
+            :return: none
+            :rtype: none
+    '''
+
     #list used to interpret ideal number of clusters
     error_list = []
 
@@ -505,14 +544,15 @@ def comp(features, kstart, kend, kstep):
         except:
             continue
         pred = cluster.predict(features)
+        #check for proper amount of labels
         if len(pred) <=1:
             continue
         if len(pred) <= 1 or len(pred) < k:
             continue
         error_list.append(cluster.bic(np.array(features)))
         copy_list.append(k)
-        # error_list.append(metrics.silhouette_score(features, pred))
 
+    #plot vals with error
     plt.plot(copy_list, error_list)
     plt.title('The Elbow Method Graph')
     plt.xlabel('Number of clusters')
@@ -529,37 +569,12 @@ def main():
 
     apis, browser_events = gatherUsedAPIs(df)
     features = buildFeatureSet(df, apis, browser_events)
-
-    # epsilon(features)
-
-    # cluster = DBSCAN(eps=0.5, min_samples = 4).fit(features)
-    #
-    # error = metrics.silhouette_score(features, cluster.labels_)
-    # print(str(error))
+    list = sampling(20, features, 'smallest avg distance')
+    print("asdfd")
+    print(list)
 
     comp(features, 1, 100, 1)
-    # # sampling(features)
-    # error_list, k_list= trainKMeans(features, 2, 25, 1)
-    # k_means_plot(error_list, k_list)
-    #
-    # G_error_list, G_k_list = trainGaussian(features, 1, 100, 1)
-    # plotGaussian(G_error_list, G_k_list)
-    #
-    # A_error_list, A_k_list = agglo(features, 1, 100, 1)
-    # plotAgglo(A_error_list, A_k_list)
-    #
-    # sil_avg, epsilon, min_samples = trainDBSCAN(features)
 
-    # list = sampling(5, features, 'smallest avg distance')
-    # print(len(list))
-    # plotDBSCAN(sil_avg, epsilon, min_samples)
-    # error_list, k_list = trainKMeans(features,1,49,1)
-    # #
-    # k_means_plot(error_list, k_list)
-    #
-    #
-    #
-    # final_plot_Kmeans(4,7, 4,features)
 
 
 
