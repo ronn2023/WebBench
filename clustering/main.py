@@ -24,12 +24,19 @@ from sklearn.metrics.pairwise import pairwise_distances
 import math
 from sklearn.neighbors import NearestNeighbors
 from matplotlib import pyplot as plt
+import numpy as np
+import scipy as sp
+from scipy.cluster.vq import kmeans2
+import matplotlib.pyplot as plt
+import csv
+import glob
+import pandas as pd
 
 
 WEBSITE_NAMES = []
 
 
-def loadJSON(url):
+def loadJSON(dynamic_url):
     '''
             DESCIPRTION
             loads json with website info
@@ -38,10 +45,11 @@ def loadJSON(url):
             :rtype: JSON
     '''
 
-    df = open(url, "r")
+    df = open(dynamic_url, "r")
 
     #JSON file loaded into manipulatable variable
     df = json.loads(df.read())
+
     return df
 
 
@@ -96,14 +104,21 @@ def gatherUsedAPIs(df):
 
     return apis, browser_events
 
-def buildFeatureSet(df, apis, browser_events):
+def buildFeatureSet(df, apis, browser_events, sf):
     '''
             DESCIPRTION
-            Build Feature list
-            :param:<df, apis, browser_events; JSON, list, list>: website data JSON, list of known API's and browser events
+            Build Feature list from dynamic feature JSON and static feature CSV files
+            :param:<df, apis, browser_events, sf; JSON, list, list, CSV>: website data JSON, list of known API's and browser events, static feature data
             :return: 2D feature list
             :rtype: 2D list
     '''
+
+    # load static feature data from CSV file
+    static_info = {}
+    with open(sf, 'r') as csvfile:
+        datareader = csv.reader(csvfile)
+        for row in datareader:
+            static_info[row[0]] = row[1:]
 
 
     #commented code below can be used to create a CSV to visualize the featurelist
@@ -119,6 +134,7 @@ def buildFeatureSet(df, apis, browser_events):
 
     # 2d array to track the feature list ( JS API calls) of each website
     features = []
+    static = []
     #loop through JSON file again and build 2D Feature List
     for site_name in df:
 
@@ -136,7 +152,7 @@ def buildFeatureSet(df, apis, browser_events):
 
         #load Lighthouse report
         site_file = site_name.replace("/","_").replace(".","__") + ".json"
-        file_path = "/Users/ronnatarajan/Desktop/WebBench/testing/" + site_file
+        file_path = "/Users/ronnatarajan/Desktop/WebBench/testing/full/" + site_file
 
         browsertime_json = open(file_path, "r")
 
@@ -189,18 +205,32 @@ def buildFeatureSet(df, apis, browser_events):
             num.append(val[key][0])
             arr.append(df[site_name]['phase_timings'][key][0])
 
-        #ensure that CPU usage analysis data exists
         if len(num) == 0 or not len(num) == 4:
             continue
 
+        # ----------------------------------------------------------- #
+        # ***     Get num events for GPU analysis                 *** #
+        # ----------------------------------------------------------- #
+        # arr.append(df[site_name]['GPU']['num_events'])
 
 
+        try:
+            web_static_list = static_info["https://" + site_name + "/"]
+        except:
+            continue
 
+        static_row = []
+        for val in web_static_list:
+            static_row.append(float(val))
+
+        static.append(static_row)
         features.append(arr)
 
 
     print(len(features))
-    print(len(features[0]))
+    print(len(static))
+
+
 
     #normalize data: MAX NORMALIZATION
     for col in range(len(features[0])):
@@ -208,7 +238,20 @@ def buildFeatureSet(df, apis, browser_events):
         for row in range(len(features)):
             arr.append(features[row][col])
         for row in range(len(features)):
-            features[row][col] = features[row][col] / max(arr)
+            if max(arr) == 0:
+                features[row][col] =0
+            else:
+                features[row][col] = features[row][col] / max(arr)
+    for col in range(len(static[0])):
+        arr = []
+        for row in range(len(static)):
+            arr.append(static[row][col])
+        for row in range(len(static)):
+            if max(arr) == 0:
+                static[row][col] =0
+            else:
+                static[row][col] = static[row][col] / max(arr)
+
 
     # commented code to add to visualization file
 
@@ -222,7 +265,7 @@ def buildFeatureSet(df, apis, browser_events):
     #     string = site_name
     #     for i in features:
     #         writer.writerow(i)
-    return features
+    return features, static
 def trainGaussian(features, kstart, kend, kstep):
     '''
             DESCIPRTION
@@ -294,8 +337,97 @@ def trainKMeans(features, kstart, kend, kstep):
         # error_list.append(metrics.silhouette_score(features, cluster.labels_))
 
     return error_list, copy_list
+def test_pca(features):
+    cluster = KMeans(n_clusters=10, random_state=0).fit(features)
 
-def sampling(budget, features, selector):
+    # PCA on orig. dataset
+    # Xred will have only 2 columns, the first two princ. comps.
+    # evals has shape (4,) and evecs (4,4). We need all eigenvalues
+    # to determine the portion of variance
+    Xred, evals, evecs, numcomp = dim_red_pca(SN)
+
+    xlab = '1. PC - ExpVar = {:.2f} %'.format(evals[0]/sum(evals)*100) # determine variance portion
+    ylab = '2. PC - ExpVar = {:.2f} %'.format(evals[1]/sum(evals)*100)
+    # plot the clusters, each set separately
+    plt.figure()
+    ax = plt.gca()
+    scatterHs = []
+    clr = ['r', 'b', 'k']
+    for cluster in set(labels_):
+        scatterHs.append(ax.scatter(Xred[labels_ == cluster, 0], Xred[labels_ == cluster, 1],
+                       color=clr[cluster], label='Cluster {}'.format(cluster)))
+    plt.legend(handles=scatterHs,loc=4)
+    plt.setp(ax, title='Principle Components', xlabel=xlab, ylabel=ylab)
+    # plot also the eigenvectors for deriving the influence of each feature
+    fig, ax = plt.subplots(2,1)
+
+    for i in range(numcomp):
+        ax[i].bar([x for x in range(len(features))],evecs[i])
+        plt.setp(ax[i], title="First and Second Component's Eigenvectors ", ylabel='Weight')
+        ax[i].bar([x for x in range(len(features))],evecs[i])
+        plt.setp(ax[1], xlabel='Features', ylabel='Weight')
+
+
+def dim_red_pca(X, d=0, corr=False):
+    r"""
+    Performs principal component analysis.
+
+    Parameters
+    ----------
+    X : array, (n, d)
+        Original observations (n observations, d features)
+
+    d : int
+        Number of principal components (default is ``0`` => all components).
+
+    corr : bool
+        If true, the PCA is performed based on the correlation matrix.
+
+    Notes
+    -----
+    Always all eigenvalues and eigenvectors are returned,
+    independently of the desired number of components ``d``.
+
+    Returns
+    -------
+    Xred : array, (n, m or d)
+        Reduced data matrix
+
+    e_values : array, (m)
+        The eigenvalues, sorted in descending manner.
+
+    e_vectors : array, (n, m)
+        The eigenvectors, sorted corresponding to eigenvalues.
+
+    """
+    X = np.array(X)
+    # Center to average
+    X_ = X-X.mean(0)
+    # Compute correlation / covarianz matrix
+    if corr:
+        CO = np.corrcoef(X_.T)
+    else:
+        CO = np.cov(X_.T)
+    # Compute eigenvalues and eigenvectors
+    e_values, e_vectors = sp.linalg.eigh(CO)
+
+    # Sort the eigenvalues and the eigenvectors descending
+    idx = np.argsort(e_values)[::-1]
+    e_vectors = e_vectors[:, idx]
+    e_values = e_values[idx]
+    # Get the number of desired dimensions
+    d_e_vecs = e_vectors
+    if d > 0:
+        d_e_vecs = e_vectors[:, :d]
+
+    else:
+        d = None
+    # Map principal components to original data
+    LIN = np.dot(d_e_vecs, np.dot(d_e_vecs.T, X_.T)).T
+    return LIN[:, :d], e_values, e_vectors, len(d_e_vecs)
+
+
+def sampling(testval, numclust, budget, features, selector):
     '''
             DESCIPRTION
             Sampling method
@@ -306,7 +438,7 @@ def sampling(budget, features, selector):
 
     # clustering object
     # cluster = DBSCAN(eps =1.2, min_samples = 2).fit(features)
-    cluster = KMeans(n_clusters=10, random_state=0).fit(features)
+    cluster = KMeans(n_clusters=numclust, random_state=0).fit(features)
     labels = cluster.labels_
 
     unique_clusters = set(labels)
@@ -327,7 +459,6 @@ def sampling(budget, features, selector):
         cpy.append(np.mean(points[row], axis=0))
     for c in unique_clusters:
         num_web[c] = [(float(len(points_of_cluster[c])) / float(len(labels))), labels.tolist().count(c)]
-
 
     smaller_web = []
     total = len(unique_clusters)
@@ -373,22 +504,45 @@ def sampling(budget, features, selector):
         return smaller_web
     elif selector == 'smallest avg distance':
 
+        # with open('../clustering/' + testval, 'w') as f:
+        #
+        #     # create the csv writer
+        #     writer = csv.writer(f)
+        #     header = ['Closest WEBSITE NAME', 'Centroid Data']
+        #     writer.writerow(header)
+        #
+        #     arr = []
+        #     map = {}
+        #
+        #     for i in centroid_of_cluster:
+        #         arr.append(i.tolist())
+        #
+        #     for j in range(len(arr[0])):
+        #         copy = []
+        #         for i in range(len(arr)):
+        #             copy.append(str(arr[i][j]))
+        #         str_line = copy
+        #         writer.writerow(str_line)
 
+
+        total = budget
         for c in unique_clusters:
+
             #distances map
             distances = {}
             #var to track sum of each cluster
             sum = 0
             #num websites to select from cluster
             num = num_web[c][0] * budget
-
             if int(math.ceil(num)) == 0:
                 print("incorrect budget")
                 exit(1)
             #keep selecting websites num times
             copy = points_of_cluster[c]
-
+            print(str(num))
             for p in points_of_cluster[c]:
+                feature_index_P= features.index(p.tolist())
+
                 for cp in points_of_cluster[c]:
                     if cp.tolist() == p.tolist():
                         continue
@@ -396,13 +550,120 @@ def sampling(budget, features, selector):
 
                     sum += math.dist(p.tolist(), cp.tolist())
 
-                    feature_index_P= features.index(p.tolist())
                 distances[feature_index_P] = float(sum) / float((len(points_of_cluster[c])))
+
+            val = int(math.ceil(num))
+            if val > total:
+                val = total - val
             for i in range(int(math.ceil(num))):
-                best_web= min(distances)
+
+                best_web= min(distances, key=distances.get)
                 smaller_web.append(WEBSITE_NAMES[best_web])
                 del distances[best_web]
         return smaller_web
+
+
+def write_json(filename, json_dict):
+    with open(filename,"w") as f:
+        json.dump(json_dict, f, indent=4)
+
+    df = pd.DataFrame.from_dict(json_dict, orient="index")
+    df.to_csv("/Users/ronnatarajan/Desktop/WebBench/testing/complexity_metrics.csv")
+
+
+def caclRequestsData(requests, speedIndex):
+    # Num of Req before SpeedIndex
+    # Transfer Size before SpeedIndex
+
+    # Num of Req after SpeedIndex
+    # Transfer Size after SpeedIndex
+    data = {}
+    data["RequestsBeforeSI"] = 0
+    data["TransferBeforeSI"] = 0
+    data["RequestsAfterSI"]  = 0
+    data["TransferAfterSI"]  = 0
+    for eachItem in requests:
+        if "endTime" in eachItem:
+            if eachItem["endTime"] < speedIndex:
+                data["RequestsBeforeSI"] += 1
+                data["TransferBeforeSI"] += eachItem["transferSize"]
+            else:
+                data["RequestsAfterSI"] += 1
+                data["TransferAfterSI"] += eachItem["transferSize"]
+        elif "startTime" in eachItem:
+            if eachItem["startTime"] < speedIndex:
+                data["RequestsBeforeSI"] += 1
+                data["TransferBeforeSI"] += eachItem["transferSize"]
+            else:
+                data["RequestsAfterSI"] += 1
+                data["TransferAfterSI"] += eachItem["transferSize"]
+    return data
+
+def buildStaticJSON():
+    count = 0
+    err   = 0
+    urls = []
+    mega_data = {}
+    for path in  glob.iglob('/Users/ronnatarajan/Desktop/WebBench/testing/full/*.json'):
+        try:
+            if path == "all_urls.json":
+                continue
+            else:
+                with open(path,"r") as f:
+                    data = json.load(f)
+                    count += 1
+                    if data["audits"]["metrics"]["details"]["items"][0]["observedLoad"] < 1000:
+                        # print(data["requestedUrl"])
+                        err += 1
+                    else:
+                        # pass
+                        # print(data["audits"]["metrics"]["details"]["items"][0]["observedLoad"]/1000.0,data["audits"]["speed-index"]["numericValue"]/1000.0, data["audits"]["interactive"]["numericValue"]/1000.0)
+                        # print(data["audits"]["metrics"]["details"]["items"][0]["observedLoad"]/1000.0,data["audits"]["speed-index"]["numericValue"]/1000.0, data["audits"]["interactive"]["numericValue"]/1000.0,path)
+                        # urls.append(data["requestedUrl"])
+                        mega_data[data["requestedUrl"]] = complexity(data)
+
+        except Exception as e:
+            print("Error in Parsing:",e)
+    # print("Total Sites:",count)
+    # print("Erred Sites:",err)
+    # print("Erred Sites %age:",err/count*100.0)
+    write_json("/Users/ronnatarajan/Desktop/WebBench/testing/complecity_metrics.json", mega_data)
+
+
+
+def complexity(data):
+    metrics = {}
+    metrics["total_requests"]   = list(filter(lambda x: x["label"] == "Total" ,data["audits"]["resource-summary"]["details"]["items"]))[0]["requestCount"]
+    metrics["js_requests"]      = list(filter(lambda x: x["label"] == "Script" ,data["audits"]["resource-summary"]["details"]["items"]))[0]["requestCount"]
+    metrics["img_requests"]     = list(filter(lambda x: x["label"] == "Image" ,data["audits"]["resource-summary"]["details"]["items"]))[0]["requestCount"]
+    metrics["doc_requests"]     = list(filter(lambda x: x["label"] == "Document" ,data["audits"]["resource-summary"]["details"]["items"]))[0]["requestCount"]
+    metrics["css_requests"]     = list(filter(lambda x: x["label"] == "Stylesheet" ,data["audits"]["resource-summary"]["details"]["items"]))[0]["requestCount"]
+    metrics["font_requests"]    = list(filter(lambda x: x["label"] == "Font" ,data["audits"]["resource-summary"]["details"]["items"]))[0]["requestCount"]
+    metrics["media_requests"]   = list(filter(lambda x: x["label"] == "Media" ,data["audits"]["resource-summary"]["details"]["items"]))[0]["requestCount"]
+    metrics["other_requests"]   = list(filter(lambda x: x["label"] == "Other" ,data["audits"]["resource-summary"]["details"]["items"]))[0]["requestCount"]
+    metrics["3rdparty_requests"]= list(filter(lambda x: x["label"] == "Third-party" ,data["audits"]["resource-summary"]["details"]["items"]))[0]["requestCount"]
+    metrics["total_size"]       = list(filter(lambda x: x["label"] == "Total" ,data["audits"]["resource-summary"]["details"]["items"]))[0]["transferSize"]/1000.0
+    metrics["js_size"]          = list(filter(lambda x: x["label"] == "Script" ,data["audits"]["resource-summary"]["details"]["items"]))[0]["transferSize"]/1000.0
+    metrics["img_size"]         = list(filter(lambda x: x["label"] == "Image" ,data["audits"]["resource-summary"]["details"]["items"]))[0]["transferSize"]/1000.0
+    metrics["doc_size"]         = list(filter(lambda x: x["label"] == "Document" ,data["audits"]["resource-summary"]["details"]["items"]))[0]["transferSize"]/1000.0
+    metrics["css_size"]         = list(filter(lambda x: x["label"] == "Stylesheet" ,data["audits"]["resource-summary"]["details"]["items"]))[0]["transferSize"]/1000.0
+    metrics["font_size"]        = list(filter(lambda x: x["label"] == "Font" ,data["audits"]["resource-summary"]["details"]["items"]))[0]["transferSize"]/1000.0
+    metrics["media_size"]       = list(filter(lambda x: x["label"] == "Media" ,data["audits"]["resource-summary"]["details"]["items"]))[0]["transferSize"]/1000.0
+    metrics["other_size"]       = list(filter(lambda x: x["label"] == "Other" ,data["audits"]["resource-summary"]["details"]["items"]))[0]["transferSize"]/1000.0
+    metrics["3rdparty_size"]    = list(filter(lambda x: x["label"] == "Third-party" ,data["audits"]["resource-summary"]["details"]["items"]))[0]["transferSize"]/1000.0
+
+    metrics["firstContentfulPaint"]         = data["audits"]["metrics"]["details"]["items"][0]["firstContentfulPaint"]
+    metrics["firstMeaningfulPaint"]         = data["audits"]["metrics"]["details"]["items"][0]["firstMeaningfulPaint"]
+    metrics["largestContentfulPaint"]       = data["audits"]["metrics"]["details"]["items"][0]["largestContentfulPaint"]
+    metrics["totalCumulativeLayoutShift"]   = data["audits"]["metrics"]["details"]["items"][0]["totalCumulativeLayoutShift"]
+    metrics["speedIndex"]                   = data["audits"]["metrics"]["details"]["items"][0]["speedIndex"]
+    metrics["interactive"]                  = data["audits"]["metrics"]["details"]["items"][0]["interactive"]
+    metrics["observedLoad"]                 = data["audits"]["metrics"]["details"]["items"][0]["observedLoad"]
+    metrics["observedDomContentLoaded"]     = data["audits"]["metrics"]["details"]["items"][0]["observedDomContentLoaded"]
+
+    metrics.update(caclRequestsData(data["audits"]["network-requests"]["details"]["items"], data["audits"]["metrics"]["details"]["items"][0]["observedSpeedIndex"] ))
+    return metrics
+
 
 #BEST VALUE FOR NUMCLUSTERS WAS CALCULATED TO BE  **** 4 ***
 def final_plots(num_clusters,k, a, features):
@@ -564,18 +825,38 @@ def comp(features, kstart, kend, kstep):
     # return error_list, k_list
 
 def main():
+    '''Uncomment Below Code to build Static Data File's '''
+    #buildStaticJSON()
+
+
     # df = loadJSON("/Users/ronnatarajan/Desktop/WebBench/testing/smaller_webList/web_list.json")
     df = loadJSON("/Users/ronnatarajan/Desktop/WebBench/testing/web_bench_stats_random_100.json")
-
+    #
     apis, browser_events = gatherUsedAPIs(df)
-    features = buildFeatureSet(df, apis, browser_events)
-    list = sampling(20, features, 'smallest avg distance')
-    print("asdfd")
-    print(list)
+    sf = "/Users/ronnatarajan/Desktop/WebBench/testing/complexity_metrics.csv"
+    features, static = buildFeatureSet(df, apis, browser_events, sf)
+    # # error_list, k_list = trainKMeans(features, 1, 10, 1)
+    # # k_means_plot(error_list, k_list) # comes up with 5 suggested clusters
+    #
+    # static_error_list, static_k_list = trainKMeans(static, 1, 10, 1)
+    # k_means_plot(static_error_list, static_k_list) # comes up with 5 suggested clusters but less error
 
-    comp(features, 1, 100, 1)
 
+    #
+    # arr = []
+    # for i in range(len(features)):
+    #     arr.append(features[i] + static[i])
+    #
+    # list = sampling("both",5, 5, arr, 'smallest avg distance')
 
+    # cpy_list = sampling("dynamic",5,5,features, 'smallest avg distance')
+    # print(list)
+    # print("asdfd")
+    # print(list)
+    #
+    # comp(features, 1, 100, 1)
+
+    # LIN, e_values, e_vectors, numcomp = dim_red_pca(features)
 
 
 

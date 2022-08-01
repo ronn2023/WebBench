@@ -30,7 +30,14 @@ def loadJSON(url):
 def runBrowsertime(df):
     x = {}
 
-    os.system("cd /Users/ronnatarajan/Desktop/WebBench")
+    os.system("cd /Users/ronnatarajan/Desktop/WebBench/clustering/test")
+    resfile = "https://google.com".split("https://")[1].replace("/","_").replace(".","__")
+    # Users/luisaescosteguy/Documents/Research/k-means/
+    script = '/Users/ronnatarajan/Documents/WebBench/clustering/tests/js_api_logging.js'
+
+    os.system("docker run --shm-size=1gb -v //Users/ronnatarajan/Documents/WebBench/clustering/tests lighthouse-test browsertime --script " + script + " --pageLoadStrategy normal --prettyPrint --har " + resfile + " -b chrome --resultDir api_data --output " + resfile +  " " + "https://google.com")
+
+
     for site in df:
 
         resfile = "../data/" + site.replace("/","_").replace(".","__") + ".json"
